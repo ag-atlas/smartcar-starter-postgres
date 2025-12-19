@@ -1,5 +1,7 @@
 'use strict';
 
+require('dotenv').config();
+
 const cors = require('cors');
 const express = require('express');
 const smartcar = require('smartcar');
@@ -10,8 +12,16 @@ const {
   getVehicleInfo,
   getVehiclesWithAttributes,
   handleSettlement,
+  setAuthClient,
 } = require('./utils');
 const { authenticate } = require('./middleware');
+const {
+  initializeDatabase,
+  saveVehicleTokens,
+  getAllStoredVehicles,
+  deleteVehicleTokens,
+  deleteAllVehicleTokens,
+} = require('./db');
 
 const corsOptions = {
   // TODO: specify production origin
@@ -32,33 +42,68 @@ const client = new smartcar.AuthClient({
   clientId: process.env.SMARTCAR_CLIENT_ID,
   clientSecret: process.env.SMARTCAR_CLIENT_SECRET,
   redirectUri: process.env.SMARTCAR_REDIRECT_URI,
-  mode: 'live', // one of ['live', 'simulated']
+  mode: 'simulated', // one of ['live', 'simulated']
 });
 
-// Exchanges code for access object, attaches access object to session cookie as a JWT
+// Share the auth client with utils for token refresh
+setAuthClient(client);
+
+// Initialize database on startup
+initializeDatabase().catch(err => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
+});
+
+// Exchanges code for access object, saves tokens to database
 app.get('/exchange', async function(req, res) {
   try {
     const code = req.query.code;
-    const access = await client.exchangeCode(code)
-    // For now, we'll store the access object as a jwt in a session cookie
-    // In a production app, you'll want to store it in some kind of persistent storage 
-    // and handle refreshing the token, which expires after 2 hrs https://smartcar.com/docs/api/#refresh-token-exchange
-    const accessToken = jwt.sign(
+    const access = await client.exchangeCode(code);
+    
+    // Get all vehicle IDs for this access token and save tokens for each
+    const { vehicles: vehicleIds } = await smartcar.getVehicles(access.accessToken);
+    
+    // Save tokens for each vehicle in the database
+    for (const vehicleId of vehicleIds) {
+      await saveVehicleTokens(vehicleId, {
+        accessToken: access.accessToken,
+        refreshToken: access.refreshToken,
+        expiration: access.expiration,
+        refreshExpiration: access.refreshExpiration,
+      });
+    }
+    
+    // Also store in cookie for session-based access (backward compatible)
+    const accessJwt = jwt.sign(
       access,
       process.env.JWT_SECRET_KEY,
-    )
-    res.cookie('my-starter-app', accessToken, {
+    );
+    res.cookie('my-starter-app', accessJwt, {
       expires: 0, // makes this a session cookie
       path: '/',
       httpOnly: true,
       sameSite: 'none',
       secure: true,
-    })
+    });
   
-    res.status(200).json({ message: 'success' });
+    res.status(200).json({ message: 'success', vehicleCount: vehicleIds.length });
   } catch (err) {
     const message = err.message || 'Failed to exchange code for access token';
-    res.status(500).json({error: message})
+    res.status(500).json({error: message});
+  }
+});
+
+// Check for stored vehicles with valid tokens (no auth required)
+app.get('/vehicles/stored', async function(req, res) {
+  try {
+    const storedVehicleIds = await getAllStoredVehicles();
+    res.status(200).json({ 
+      hasStoredVehicles: storedVehicleIds.length > 0,
+      vehicleCount: storedVehicleIds.length,
+    });
+  } catch (err) {
+    const message = err.message || 'Failed to check for stored vehicles';
+    res.status(500).json({error: message});
   }
 });
 
@@ -215,12 +260,14 @@ app.delete('/vehicle', authenticate, async function(req, res) {
     const vehicleId = req.query.vehicleId;
     const vehicle = createSmartcarVehicle(vehicleId, accessToken);
     await vehicle.disconnect();
+    // Also remove tokens from database
+    await deleteVehicleTokens(vehicleId);
     res.status(200).json({
       message: "Successfully disconnected vehicle",
     });
   } catch (err) {
     const message = err.message || 'Failed to disconnect vehicle.';
-    res.status(500).json({error: message})
+    res.status(500).json({error: message});
   }
 })
 
@@ -232,11 +279,14 @@ app.delete('/vehicles', authenticate, async function(req, res) {
     const disconnectPromises = vehicleIds.map((vehicleId) => {
       const vehicle = createSmartcarVehicle(vehicleId, accessToken);
       return vehicle.disconnect();
-    })
+    });
 
     const settlements = await Promise.allSettled(disconnectPromises);
+    // Also remove all tokens from database
+    await deleteAllVehicleTokens();
+    
     if (settlements.some(settlement => settlement.status === 'rejected')) {
-      res.status(500).json({error: 'Failed to disconnect one or more vehicles'})
+      res.status(500).json({error: 'Failed to disconnect one or more vehicles'});
     } else {
       res.status(200).json({
         message: "Successfully disconnected all vehicles",
@@ -244,7 +294,7 @@ app.delete('/vehicles', authenticate, async function(req, res) {
     }
   } catch (err) {
     const message = err.message || 'Failed to disconnect vehicles.';
-    res.status(500).json({error: message})
+    res.status(500).json({error: message});
   }
 });
 

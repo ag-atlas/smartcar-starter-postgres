@@ -17,6 +17,11 @@ api.exchangeCode = async (code) => {
   return await instance.get(`/exchange?code=${code}`);
 };
 
+api.checkStoredVehicles = async () => {
+  const { data } = await instance.get('/vehicles/stored');
+  return data;
+};
+
 api.getVehicles = async () => {
   const vehicleProperties = getReadProperties().join('.');
   const { data } = await instance.get(`/vehicles`, {

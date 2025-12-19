@@ -200,7 +200,7 @@ const autoInsuranceConfig = {
     loadingMessage: 'Rest insured...your vehicle info is on the way!',
   },
   mode: 'live',
-  unitSystem: 'imperial',
+  unitSystem: 'metric',
   brandSelect: '',
   singleSelect: true,
   requiredVehicleProperties: [
@@ -222,7 +222,7 @@ const energyUtilitiesConfig = {
     loadingMessage: 'Charging up the information superhighway...buckle up!',
   },
   mode: 'live',
-  unitSystem: 'imperial',
+  unitSystem: 'metric',
   brandSelect: 'TESLA',
   singleSelect: false,
   requiredVehicleProperties: [
@@ -255,7 +255,7 @@ const carSharingConfig = {
     loadingMessage: 'Roaming the streets for your perfect ride...',
   },
   mode: 'live',
-  unitSystem: 'imperial',
+  unitSystem: 'metric',
   brandSelect: '',
   singleSelect: true,
   requiredVehicleProperties: [
@@ -281,7 +281,7 @@ const roadsideAssistanceConfig = {
     loadingMessage: 'Roadside assistance on standby...your vehicle details coming up!'
   },
   mode: 'live',
-  unitSystem: 'imperial',
+  unitSystem: 'metric',
   brandSelect: '',
   singleSelect: true,
   requiredVehicleProperties: [
@@ -303,7 +303,7 @@ const buildYourOwnConfig = {
    * Section 1: Personalize your app!
    */
   staticText: {
-    appName: "[Your app's name]",
+    appName: "BorettsBil Admin PoC",
     loadingMessage: 'Loading...',
   },
 
@@ -311,8 +311,8 @@ const buildYourOwnConfig = {
    * Section 2: Configure the Smartcar instance and Connect flow
    * You can also do this directly where smartcar gets instantiated in App.jsx
    */
-  mode: 'live', // one of ['live', 'simulated']
-  unitSystem: 'imperial',
+  mode: 'simulated', // one of ['live', 'simulated']
+  unitSystem: 'metric',
   brandSelect: '',
   singleSelect: false,
 
@@ -328,6 +328,23 @@ const buildYourOwnConfig = {
   ],
   vehicleProperties: [
     properties.vin,
+    properties.odometer,
+    properties.location,
+    properties.engineOil,
+    properties.tirePressure,
+    properties.lockUnlock,
+    properties.startStopCharge,
+    properties.chargeState,
+    properties.chargeCompletion,
+    properties.batteryLevel,
+    properties.evRange,
+    properties.chargeLimit,
+    properties.setChargeLimit,
+    properties.batteryCapacity,
+    properties.voltage,
+    properties.wattage,
+    properties.amperage,
+    properties.setAmperage,
     // properties.someVehicleProperty,
   ],
 };

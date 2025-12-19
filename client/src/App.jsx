@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Smartcar from '@smartcar/auth';
 import api from './api';
 import './App.css';
@@ -11,7 +11,29 @@ const App = () => {
   const [vehicles, setVehicles] = useState([]);
   const [selectedVehicle, setSelectedVehicle] = useState({});
   const [error, setError] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // Start with loading to check for stored vehicles
+
+  // Check for stored vehicles on initial load
+  useEffect(() => {
+    const checkForStoredVehicles = async () => {
+      try {
+        const { hasStoredVehicles } = await api.checkStoredVehicles();
+        if (hasStoredVehicles) {
+          // We have stored tokens, fetch the vehicles
+          const data = await api.getVehicles();
+          setVehicles(data.vehicles);
+          setSelectedVehicle(data.selectedVehicle);
+        }
+      } catch (err) {
+        // No stored vehicles or error - user will need to connect
+        console.log('No stored vehicles found, user needs to connect');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    checkForStoredVehicles();
+  }, []);
 
   const onComplete = async (err, code, state) => {
     if (err) {

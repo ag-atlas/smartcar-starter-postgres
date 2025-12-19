@@ -10,11 +10,29 @@ $ export SMARTCAR_CLIENT_ID=<your-client-id>
 $ export SMARTCAR_CLIENT_SECRET=<your-client-secret>
 $ export SMARTCAR_REDIRECT_URI=https://javascript-sdk.smartcar.com/v2/redirect?app_origin=http://localhost:3000
 $ export JWT_SECRET_KEY=<your-jsonwebtoken-key>
+$ export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/smartcar_app
 ```
 
 In production, replace the localhosts with the correct client and server urls.
 
-To install the required dependencies and run this Node app in development
+## PostgreSQL Setup
+
+This app uses PostgreSQL to persist vehicle tokens, so you don't need to re-authenticate through the Smartcar Connect flow each time.
+
+**Using Docker Compose (recommended):**
+```bash
+# From the project root directory
+$ docker-compose up -d
+```
+
+This starts a PostgreSQL container on port 5432. The database schema is automatically created when the server starts.
+
+**Manual PostgreSQL setup:**
+If you prefer to use an existing PostgreSQL instance, just set the `DATABASE_URL` environment variable to your connection string.
+
+## Running the Server
+
+To install the required dependencies and run this Node app in development:
 ```bash
 $ npm install
 $ npm run debug
@@ -22,10 +40,11 @@ $ npm run debug
 
 ## About the code
 **Access tokens:**
-- Currently, the server receives the authorization code from the client and exchanges it for an `access` object, which contains the `accessToken` needed to make vehicle requests. The server attaches this `access` object to a session cookie, which will be extracted in subsequent requests from the client. In production, you may want to store this access object in a persistent storage and consider handling refreshing the token, which expires after 2 hours.
+- The server receives the authorization code from the client and exchanges it for an `access` object, which contains the `accessToken` needed to make vehicle requests. Tokens are stored in PostgreSQL keyed by vehicle ID, allowing persistent access across sessions. Access tokens expire after 2 hours, but the server automatically refreshes them using the stored refresh token (valid for 60 days).
 
 **Routes:**
-- `GET /exchange:` exchanges code for access token after the user grants access in the Connect flow
+- `GET /exchange:` exchanges code for access token after the user grants access in the Connect flow, and saves tokens to the database
+- `GET /vehicles/stored:` checks if there are any vehicles with stored tokens (used on app load to skip Connect flow)
 - `GET /vehicles:` returns a list of granted vehicle along with basic info (MMY) to render these vehicles in the select menu. Also returns requested information for the first vehicle in the list to be displayed on the Vehicle screen
 - `GET /vehicle:` returns requested vehicle properties for one vehicle. It uses the `getVehicleInfo` function  and the `vehicleProperties` object in utils to handle finding the correct Smartcar endpoint for each requested vehicle property, batching up the requests, and resolving the response.
 - `POST /vehicle/charge`: Start and stop charge for vehicles with a battery and charging capabilities

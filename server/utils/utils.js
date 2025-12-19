@@ -3,40 +3,120 @@ const smartcar = require('smartcar');
 const jwt = require('jsonwebtoken');
 const { get } = require('lodash');
 const { vehicleProperties } = require('./vehicleProperties');
+const { getVehicleTokens, saveVehicleTokens, getAllStoredVehicles } = require('../db');
+
+// Auth client reference for token refresh
+let authClient = null;
+
+/**
+ * Set the Smartcar auth client (called from index.js)
+ * @param {object} client - Smartcar AuthClient instance
+ */
+const setAuthClient = (client) => {
+  authClient = client;
+};
 
 /**
  * Helper function that returns smartcar vehicle instance.
  *
  * @param {string} vehicleId
  * @param {string} accessToken
- * @param {string} [unitSystem=imperial] imperial or metric
+ * @param {string} [unitSystem=metric] metric or imperial
  * @returns {object} vehicle
  */
 const createSmartcarVehicle = (
   vehicleId,
   accessToken,
-  unitSystem = 'imperial',
+  unitSystem = 'metric',
 ) => {
   return new smartcar.Vehicle(vehicleId, accessToken, { unitSystem });
 };
 
 /**
- * Helper function that extracts the access object from the session cookie.
+ * Refresh tokens using the refresh token
+ * @param {string} refreshToken 
+ * @returns {object} new access object
+ */
+const refreshTokens = async (refreshToken) => {
+  if (!authClient) {
+    throw new Error('Auth client not initialized');
+  }
+  const newAccess = await authClient.exchangeRefreshToken(refreshToken);
+  return newAccess;
+};
+
+/**
+ * Get valid access token for a vehicle, refreshing if necessary
+ * @param {string} vehicleId 
+ * @returns {object} tokens object with accessToken
+ */
+const getAccessForVehicle = async (vehicleId) => {
+  const tokens = await getVehicleTokens(vehicleId);
+  if (!tokens) {
+    throw new Error(`No tokens found for vehicle ${vehicleId}`);
+  }
+
+  // Check if access token is expired (with 5 minute buffer)
+  const now = new Date();
+  const expirationBuffer = 5 * 60 * 1000; // 5 minutes
+  const isExpired = tokens.expiration.getTime() - expirationBuffer < now.getTime();
+
+  if (isExpired) {
+    // Check if refresh token is still valid
+    if (tokens.refreshExpiration.getTime() < now.getTime()) {
+      throw new Error('Refresh token expired, please reconnect vehicle');
+    }
+
+    // Refresh the tokens
+    const newAccess = await refreshTokens(tokens.refreshToken);
+    
+    // Update tokens in database
+    await saveVehicleTokens(vehicleId, {
+      accessToken: newAccess.accessToken,
+      refreshToken: newAccess.refreshToken,
+      expiration: newAccess.expiration,
+      refreshExpiration: newAccess.refreshExpiration,
+    });
+
+    return { accessToken: newAccess.accessToken };
+  }
+
+  return { accessToken: tokens.accessToken };
+};
+
+/**
+ * Helper function that extracts the access object from session cookie or database.
+ * Tries cookie first, then falls back to database for any stored vehicle.
  *
  * @param {object} req
  * @returns {object} access object with the accessToken field
  */
-const getAccess = (req) => {
+const getAccess = async (req) => {
+  // First try to get from cookie (existing session)
   const accessCookie = req.cookies?.['my-starter-app'];
-  if (!accessCookie) {
-    throw new Error('Access token missing in cookie');
+  if (accessCookie) {
+    try {
+      const access = jwt.verify(accessCookie, process.env.JWT_SECRET_KEY);
+      // Check if token is still valid
+      const now = new Date();
+      const expirationBuffer = 5 * 60 * 1000; // 5 minutes
+      if (new Date(access.expiration).getTime() - expirationBuffer > now.getTime()) {
+        return access;
+      }
+      // Token from cookie is expired, try to refresh using stored refresh token
+    } catch (err) {
+      // Cookie invalid, fall through to database lookup
+    }
   }
-  // Decode the "my-starter-app" cookie value
-  const access = jwt.verify(
-    accessCookie,
-    process.env.JWT_SECRET_KEY,
-    );
-  return access;
+
+  // Try to get tokens from database
+  const storedVehicleIds = await getAllStoredVehicles();
+  if (storedVehicleIds.length > 0) {
+    // Use the first vehicle's tokens (they're all from the same auth session)
+    return await getAccessForVehicle(storedVehicleIds[0]);
+  }
+
+  throw new Error('No valid access token found. Please connect your vehicle.');
 };
 
 /**
@@ -149,7 +229,10 @@ const getVehicleInfo = async (vehicleId, accessToken, requestedProperties = [], 
 module.exports = {
   createSmartcarVehicle,
   getAccess,
+  getAccessForVehicle,
   getVehicleInfo,
   getVehiclesWithAttributes,
   handleSettlement,
+  refreshTokens,
+  setAuthClient,
 };
