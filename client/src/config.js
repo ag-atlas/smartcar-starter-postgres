@@ -303,7 +303,7 @@ const buildYourOwnConfig = {
    * Section 1: Personalize your app!
    */
   staticText: {
-    appName: "BorettsBil Admin PoC",
+    appName: "BRBil Admin PoC",
     loadingMessage: 'Loading...',
   },
 
@@ -330,8 +330,6 @@ const buildYourOwnConfig = {
     properties.vin,
     properties.odometer,
     properties.location,
-    properties.engineOil,
-    properties.tirePressure,
     properties.lockUnlock,
     properties.startStopCharge,
     properties.chargeState,
@@ -345,6 +343,7 @@ const buildYourOwnConfig = {
     properties.wattage,
     properties.amperage,
     properties.setAmperage,
+    properties.tirePressure,
     // properties.someVehicleProperty,
   ],
 };
